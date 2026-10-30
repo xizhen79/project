@@ -1,0 +1,11 @@
+import {it,expect,vi,afterEach} from 'vitest';
+import {readFileSync} from 'node:fs';
+import {mockMode,mockAnswer} from '@/lib/server/mock-ai';
+import {inspectFile,initialFilters} from '@/lib/data';
+import {buildAskContext} from '@/lib/ai-context';
+const records=inspectFile(readFileSync('data/현장공정기성.csv','utf8'),'csv').records;
+const payload={question:'점검 이유',requestId:'mock-1',revision:1,context:buildAskContext(records,{...initialFilters,siteId:'D'})};
+afterEach(()=>vi.unstubAllEnvs());
+it('모의 환경은 개발 서버에서만 활성화한다',()=>{vi.stubEnv('DASHBOARD_AI_TEST_MODE','delay');vi.stubEnv('NODE_ENV','production');expect(mockMode()).toBeNull();vi.stubEnv('NODE_ENV','development');expect(mockMode()).toBe('delay');});
+it('모의 응답은 실제 AI 성공과 구별한다',async()=>{const r=await mockAnswer(payload,'success',new AbortController().signal);expect(r.mock).toBe(true);expect(r.answer).toContain('실제 AI 호출 아님');});
+it('모의 실패와 지연 중 취소를 재현한다',async()=>{await expect(mockAnswer(payload,'error',new AbortController().signal)).rejects.toMatchObject({code:502});const controller=new AbortController();const job=mockAnswer(payload,'delay',controller.signal);controller.abort();await expect(job).rejects.toMatchObject({code:504});});
